@@ -1,34 +1,29 @@
 (ns guestbook.test.db.core
   (:require [guestbook.db.core :refer [*db*] :as db]
-            [guestbook.db.migrations :as migrations]
+            [luminus-migrations.core :as migrations]
             [clojure.test :refer :all]
             [clojure.java.jdbc :as jdbc]
-            [config.core :refer [env]]
+            [guestbook.config :refer [env]]
+            [conman.core :refer [with-transaction]]
             [mount.core :as mount]))
 
 (use-fixtures
   :once
   (fn [f]
-    (mount/start #'guestbook.db.core/*db*)
-    (migrations/migrate ["migrate"])
+    (mount/start
+      #'guestbook.config/env
+      #'guestbook.db.core/*db*)
+    (migrations/migrate ["migrate"](:database-url env))
     (f)))
 
-(deftest test-users
+(deftest test-message
   (jdbc/with-db-transaction [t-conn *db*]
     (jdbc/db-set-rollback-only! t-conn)
-    (is (= 1 (db/create-user!
-               t-conn
-               {:id         "1"
-                :first_name "Sam"
-                :last_name  "Smith"
-                :email      "sam.smith@example.com"
-                :pass       "pass"})))
-    (is (= {:id         "1"
-            :first_name "Sam"
-            :last_name  "Smith"
-            :email      "sam.smith@example.com"
-            :pass       "pass"
-            :admin      nil
-            :last_login nil
-            :is_active  nil}
-           (db/get-user t-conn {:id "1"})))))
+    (let [message {:name "test"
+                   :message "test"
+                   :timestamp (java.util.Date.)}]
+      (is (= 1 (db/save-message! t-conn message)))
+      (let [result (db/get-messages t-conn {})]
+        (is (= 1 (count result)))
+        (is (= message (dissoc (first result) :id))))))
+  (is (empty? (db/get-messages))))
